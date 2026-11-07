@@ -33,9 +33,10 @@ summary .n{margin-left:auto;background:var(--g);color:#fff;border-radius:10px;fo
 summary::after{content:"›";color:var(--mut);font-size:22px;transform:rotate(90deg);transition:.15s}
 details[open] summary::after{transform:rotate(-90deg)}
 .chips{display:flex;flex-wrap:wrap;gap:8px;padding:0 12px 14px}
-.chip{border:1px solid var(--line);background:#fafafa;border-radius:20px;padding:9px 13px;font-size:15px;color:var(--tx)}
+.chip{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;border:1px solid var(--line);background:#fafafa;border-radius:20px;padding:9px 13px;font-size:15px;color:var(--tx)}
 .chip.sel{background:var(--g);border-color:var(--g);color:#fff}
 .chip.sel::before{content:"✓ "}
+.chip .qt{background:rgba(255,255,255,.25);border-radius:10px;padding:1px 7px;margin-left:6px;font-size:13px;font-weight:700}
 .chip.ed{border-style:dashed}
 .addnew{width:100%;margin-top:10px;padding:14px;border:2px dashed var(--g);background:var(--g2);color:var(--g);border-radius:12px;font-size:16px;font-weight:600}
 .card{background:#fff;border:1px solid var(--line);border-radius:12px;margin:8px 0;overflow:hidden}
@@ -170,8 +171,8 @@ function rMontar(){
 }
 function rRes(){
   const n=S.current.items.length;
-  setTimeout(()=>{const c=$("#cnt");if(c)c.textContent=editMode?"Modo edição: toque num item para renomear, mudar de categoria ou excluir.":(n?`${n} ${n>1?"itens":"item"} na lista atual`:"Toque nos itens para montar sua lista")},0);
-  const chip=it=>`<button class="chip ${inList(it.id)?"sel":""} ${editMode?"ed":""}" data-act="chip" data-id="${it.id}">${esc(it.name)}</button>`;
+  setTimeout(()=>{const c=$("#cnt");if(c)c.textContent=editMode?"Modo edição: toque num item para renomear, mudar de categoria ou excluir.":(n?`${n} ${n>1?"itens":"item"} na lista · segure um item para pôr quantidade`:"Toque para adicionar · segure para escolher a quantidade")},0);
+  const chip=it=>{const li=inList(it.id);return `<button class="chip ${li?"sel":""} ${editMode?"ed":""}" data-act="chip" data-id="${it.id}">${esc(it.name)}${li&&li.qty?`<span class="qt">${esc(li.qty)}</span>`:""}</button>`};
   if(q.trim()){
     const nq=norm(q);
     const found=S.master.filter(it=>norm(it.name).includes(nq));
@@ -239,7 +240,7 @@ function rMais(){
    <button class="btn sec" data-act="catAdd">＋ Nova categoria</button>
   <h2>Backup</h2><div class="muted" style="margin:4px">Os dados ficam só neste celular. Guarde uma cópia de vez em quando (ex: mande para você no WhatsApp).</div>
   <div class="btns"><button class="btn sec" data-act="backup">Copiar backup</button><button class="btn sec" data-act="restore">Restaurar</button></div>
-  <div class="muted" style="text-align:center;margin:20px 0">Lista de Mercado v1 · ${S.master.length} itens na lista mestre</div>`;
+  <div class="muted" style="text-align:center;margin:20px 0">Lista de Mercado v1.1 · ${S.master.length} itens na lista mestre</div>`;
   return h;
 }
 
@@ -303,15 +304,21 @@ const A={
     toast(`Excluído: ${it.name}`,()=>{S.master.splice(ix,0,it);save();render()});
   },
   edit(el){
-    const i=inList(el.dataset.id);if(!i)return;
+    const i=inList(el.dataset.id)||(()=>{const m=S.master.find(x=>x.id===el.dataset.id);return m&&{mid:m.id,name:m.name,qty:"",note:"",isNew:true}})();if(!i)return;
     const qk=["2","3","4","6","12","1 kg","500 g","1 pacote","1 caixa"];
     openModal(`<h3>${esc(i.name)}</h3><div class="muted">Quantidade</div><input class="f" id="eq" value="${esc(i.qty)}" placeholder="Ex: 2, 1 kg, 1 pacote">
       <div class="quick">${qk.map(x=>`<button data-act="qk" data-v="${esc(x)}">${esc(x)}</button>`).join("")}</div>
       <div class="muted">Observação</div><input class="f" id="eo" value="${esc(i.note)}" placeholder="Ex: marca Ypê, o maior">
-      <button class="btn" data-act="editSave" data-id="${i.mid}">Salvar</button>`);
+      <button class="btn" data-act="editSave" data-id="${i.mid}">${i.isNew?"Adicionar à lista":"Salvar"}</button>${!i.isNew&&tab==="montar"?`<button class="btn red" data-act="rmFromModal" data-id="${i.mid}">Tirar da lista</button>`:""}`);
   },
   qk(el){$("#eq").value=el.dataset.v},
-  editSave(el){const i=inList(el.dataset.id);if(!i)return;i.qty=$("#eq").value.trim();i.note=$("#eo").value.trim();save();closeModal();render()},
+  editSave(el){
+    let i=inList(el.dataset.id);
+    if(!i){const m=S.master.find(x=>x.id===el.dataset.id);if(!m)return;addToList(m);i=inList(m.id)}
+    i.qty=$("#eq").value.trim();i.note=$("#eo").value.trim();save();closeModal();
+    if(tab==="montar"&&!view)refreshMontar();else render();
+  },
+  rmFromModal(el){closeModal();A.chip(el)},
   rm(el){
     const i=inList(el.dataset.id);if(!i)return;const pos=S.current.items.indexOf(i);
     S.current.items.splice(pos,1);save();render();toast(`Removido: ${i.name}`,()=>{S.current.items.splice(pos,0,i);save();render()});
@@ -418,6 +425,18 @@ document.addEventListener("click",e=>{
   const a=e.target.closest("[data-act]");
   if(a&&A[a.dataset.act]){e.preventDefault();e.stopPropagation();A[a.dataset.act](a)}
 });
+// segurar o item (meio segundo) abre a quantidade
+let lpTimer=null,lpFired=false,lpX=0,lpY=0;
+document.addEventListener("pointerdown",e=>{
+  const c=e.target.closest(".chip");lpFired=false;clearTimeout(lpTimer);
+  if(!c||editMode)return;lpX=e.clientX;lpY=e.clientY;
+  lpTimer=setTimeout(()=>{lpFired=true;try{navigator.vibrate&&navigator.vibrate(30)}catch(_){}A.edit(c)},500);
+});
+const lpCancel=()=>clearTimeout(lpTimer);
+document.addEventListener("pointerup",lpCancel);document.addEventListener("pointercancel",lpCancel);
+document.addEventListener("pointermove",e=>{if(Math.abs(e.clientX-lpX)>10||Math.abs(e.clientY-lpY)>10)lpCancel()});
+document.addEventListener("contextmenu",e=>{if(e.target.closest(".chip"))e.preventDefault()});
+document.addEventListener("click",e=>{if(lpFired&&e.target.closest(".chip")){lpFired=false;e.preventDefault();e.stopPropagation()}},true);
 document.addEventListener("input",e=>{
   if(e.target.id==="q"){q=e.target.value;refreshMontar()}
   if(e.target.id==="nm"){S.name=e.target.value.trim();save()}
